@@ -70,4 +70,9 @@ cd 到lab文件夹中，执行make,如果提示
 如果正常，会出现一个新的控制台窗口，这代表已经完成了。
 
 退出新的控制台，要先按Ctrl + A（注意是字母A，不是alt键），在按x即可退出
+## 参考文献
+* [官网](https://pdos.csail.mit.edu/6.828/2018/tools.html)
+* [别人的知乎专栏](https://zhuanlan.zhihu.com/p/58143429)
+* [Stack-overflow问答](https://superuser.com/questions/1087859/how-to-quit-the-qemu-monitor-when-not-using-a-gui)
+
 
