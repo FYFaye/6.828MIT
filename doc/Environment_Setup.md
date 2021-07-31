@@ -3,7 +3,7 @@
 环境配置主要包括两类，一类是一个x86的模拟器，叫QEMU，另一类是编译工具链；
 
 ## 我的环境
-Ubuntu 18.04  WSL 1环境
+WSL1    Ubuntu 18.04
 
 ## 步骤
 
@@ -27,7 +27,7 @@ gcc -m32 -print-libgcc-file-name
 ```
 /usr/lib/gcc/x86_64-linux-gnu/version/32/libgcc.a
 ```
-现在一般都使用x64的系统，还需要安装一下32位的库 sudo apt-get install gcc-multilib；  
+现在一般都使用x64的系统，还需要安装一下32位的库 `sudo apt-get install gcc-multilib`；  
 
 
 ### 安装QEMU 模拟器
@@ -50,9 +50,9 @@ cd到clone的6.828-qemu目录中，设置config：
 ./configure --disable-kvm --disable-werror --target-list="i386-softmmu x86_64-softmmu"
 ```
 如果没有Python需要先安装一下
-
+```
 sudo apt install python
-
+```
 设置config后就可以make && make install 
 ```
 make && make install
