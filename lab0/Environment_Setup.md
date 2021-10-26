@@ -3,7 +3,7 @@
 环境配置主要包括两类，一类是一个x86的模拟器，叫QEMU，另一类是编译工具链；
 
 ## 我的环境
-Ubuntu 18.04  WSL 1环境
+WSL1    Ubuntu 18.04
 
 ## 步骤
 
@@ -27,7 +27,7 @@ gcc -m32 -print-libgcc-file-name
 ```
 /usr/lib/gcc/x86_64-linux-gnu/version/32/libgcc.a
 ```
-现在一般都使用x64的系统，还需要安装一下32位的库 sudo apt-get install gcc-multilib；  
+现在一般都使用x64的系统，还需要安装一下32位的库 `sudo apt-get install gcc-multilib`；  
 
 
 ### 安装QEMU 模拟器
@@ -50,19 +50,25 @@ cd到clone的6.828-qemu目录中，设置config：
 ./configure --disable-kvm --disable-werror --target-list="i386-softmmu x86_64-softmmu"
 ```
 如果没有Python需要先安装一下
-
+```
 sudo apt install python
-
+```
 设置config后就可以make && make install 
 ```
-make && make install
+sudo make && sudo make install //最好使用管理员账户，否则会报错
 ```
+遇到的编译问题：  
+```
+qga/commands-posix.c: In function ‘dev_major_minor’:
+qga/commands-posix.c:633:13: error: In the GNU C Library, "major" is defined
+```
+这个问题需要再该文件qga/commands-posix.c中加入头文件`#include <sys/sysmacros.h>`  
 
 然后cd到6.828目录下，输入以下命令clone JOS
 ```
 git clone https://pdos.csail.mit.edu/6.828/2018/jos.git lab 
 ```
-cd 到lab文件夹中，执行make,如果提示
+cd 到lab文件夹中，执行`make`,如果提示
 ```
 + mk obj/kern/kernel.img
 ```
@@ -72,6 +78,7 @@ cd 到lab文件夹中，执行make,如果提示
 退出新的控制台，要先按Ctrl + A（注意是字母A，不是alt键），在按x即可退出
 ## 参考文献
 * [官网](https://pdos.csail.mit.edu/6.828/2018/tools.html)
+* [编译问题](https://www.jianshu.com/p/ec675f0e1482)
 * [别人的知乎专栏](https://zhuanlan.zhihu.com/p/58143429)
 * [Stack-overflow问答](https://superuser.com/questions/1087859/how-to-quit-the-qemu-monitor-when-not-using-a-gui)
 
