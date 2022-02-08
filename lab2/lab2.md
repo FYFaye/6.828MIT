@@ -9,7 +9,7 @@
 * kern/pmap.h
 * kern/kclock.h
 * kern/kclock.c
-memlayout.h描述了虚拟内存空间的布局，你需要修改pmap.c，memlayout.h和pmap.h定义了PageInfo结构体追踪那些page的物理内存是空闲的。kclock.c和kclock.h操作pc的电池时钟和cmos RAM设备，在ram设备中bios记录了PC物理内存的数量。在pmap.c的代码中，为了知道物理内存大小的数量需要阅读设备硬件代码，但是这些代码需要你来完成，你不需要知道cmos硬件如何工作。
+memlayout.h描述了虚拟内存空间的布局，你需要修改pmap.c，memlayout.h和pmap.h定义了PageInfo结构体追踪那些page的物理内存是空闲的。kclock.c和kclock.h操作pc的电池时钟和CMOS RAM设备，在RAM设备中BIOS记录了PC物理内存的数量。在pmap.c的代码中，为了知道物理内存大小的数量需要阅读设备硬件代码，但是这些代码需要你来完成，你不需要知道CMOS硬件如何工作。
 ## 第一部分：物理内存管理
 操作系统需要一直跟踪并了解那块区域的物理RAM是空闲的、那一块区域是正在被使用的，JOS管理物理内存是以页为单位的通过的MMU映射和保护每个分配的内存；  
 #### 练习1
@@ -22,7 +22,7 @@ memlayout.h描述了虚拟内存空间的布局，你需要修改pmap.c，memlay
     check_page_free_list()与check_page_alloc() 测试你的物理页分配器，你应该启动JOS看是否check_page_alloc报告成功，assert指令会比较有用;
 
 * boot_alloc()与mem_init()  
-这个函数只有mem_init()函数中被调用，第一次被调用是创建一级页表，也就是page_dir，一共有4096个字节，也就是最多有1024个二级页表，然后将page_dir的uvpt，就page_dir占有的页设置权限，然后就是mem_init需要补充的部分，其实注释中写的比较清楚，让你分配一共npages大小的结构体数组，npages这个变量在i386_detect_memory函数中被初始化。代码与注释如下，注意此时不能用malloc，因为还没有建立虚拟内存机制
+这个函数只有mem_init()函数中被调用，第一次被调用是创建一级页表，也就是page_dir，一共有4096个字节，也就是最多有1024个二级页表，同样的一个page_table最多有1024个对应的页，每一个页是4kb，所以二级页表最多映射4GB的内存；然后将page_dir的PADDR(uvpt)，也就是page_dir自己占有的页设置权限，然后就是mem_init需要补充的部分，其实注释中写的比较清楚，让你分配一共npages大小的结构体数组，npages这个变量在i386_detect_memory函数中被初始化。代码与注释如下，注意此时不能用malloc，因为还没有建立虚拟内存机制。
 ```
 //////////////////////////////////////////////////////////////////////
 	// Allocate an array of npages 'struct PageInfo's and store it in 'pages'.
@@ -65,9 +65,12 @@ boot_alloc(uint32_t n)
 ```
 
 * page_init()   
-这个函数用于追踪当前的物理内存使用情况，使用过的内存，记录其引用的个数，对于空闲的内存，将其用链表进行管理。  
+这个函数用于追踪当前的物理内存使用情况，使用过的内存，记录其引用的个数，对于空闲的内存，将其用链表进行管理，这个函数的注释上写的比较明白，第一个page说保存中断描述表和BIOS的，这个在lab3中被使用； [PGSIZE , npages_basemem * PGSIZE]属于空闲区域，将其链接至链表； 
 ```
-        // The example code here marks all physical pages as free.
+void
+page_init(void)
+{
+	// The example code here marks all physical pages as free.
 	// However this is not truly the case.  What memory is free?
 	//  1) Mark physical page 0 as in use.
 	//     This way we preserve the real-mode IDT and BIOS structures
@@ -86,7 +89,7 @@ boot_alloc(uint32_t n)
 	// free pages!
 	
 	size_t i;
-	//Mark page 0 in use
+	//第一页标记为使用,IDT表等已经使用
 	pages[0].pp_ref = 1;
 
 	//[PGSIZE, npages_basemem * PGSIZE) is free
@@ -96,44 +99,35 @@ boot_alloc(uint32_t n)
 		page_free_list = &pages[i];
 	}
 	
-	///[IOPHYSMEM, EXTPHYSMEM) set it be allocated 
+	///[IOPHYSMEM, EXTPHYSMEM) 被占用， lab1的IO空间到bios空间
 	for (i = IOPHYSMEM / PGSIZE ; i < EXTPHYSMEM / PGSIZE ; i ++)
 		pages[i].pp_ref = 1;
 
-	// boot_alloc Get first free mapped addr in kernel
+	// boot_alloc 找到目前第一个空闲内存块地址，从EXTPHYSMEM到这个地址，都是被占用的
 	physaddr_t kern_free_addr = PADDR(boot_alloc(0));
 	for ( ; i < kern_free_addr / PGSIZE ; i ++)
 		pages[i].pp_ref = 1;
-	
+	// 后续地址均未使用
 	for (; i < npages; i ++) {
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
-	}
+	}	
+}
+
 ```
 
 * page_alloc()
 这个函数就比较容易了，就从链表中取出一个page，并初始化这个page的内容；
 ```
-//
-// Allocates a physical page.  If (alloc_flags & ALLOC_ZERO), fills the entire
-// returned physical page with '\0' bytes.  Does NOT increment the reference
-// count of the page - the caller must do these if necessary (either explicitly
-// or via page_insert).
-//
-// Be sure to set the pp_link field of the allocated page to NULL so
-// page_free can check for double-free bugs.
-//
-// Returns NULL if out of free memory.
-//
-// Hint: use page2kva and memset
 struct PageInfo *
 page_alloc(int alloc_flags)
 {
 	// Fill this function in
-
+	// 是否还有多余的空闲页，若没有直接返回NULL
 	if (page_free_list == NULL)
 		return NULL;
+	// 从链表中取出一个page
 	struct PageInfo *pRet;
 	pRet = page_free_list;
 	page_free_list = pRet->pp_link;
@@ -179,7 +173,7 @@ page_free(struct PageInfo *pp)
 ## 第二部分: 虚拟内存
 在x86架构中，虚拟内存机制包括段选择器与段内偏移，线性地址是从段转换得到的地址，物理地址是通过页转换得到，在通过硬件总线从RAM进行寻址；  
 ```
-      Selector  +--------------+         +-----------+
+      	   Selector  +--------------+         +-----------+
           ---------->|              |         |           |
                      | Segmentation |         |  Paging   |
 Software             |              |-------->|           |---------->  RAM
@@ -219,7 +213,7 @@ JOS内核有时需要读取或者修改内存，但是这时有可能他只知�
 ### 引用计数
 在之后的实验中，你将会经常遇到一种情况，多个不同的虚拟地址被同时映射到相同的物理页上面。这时我们需要记录一下每一个物理页上存在着多少不同的虚拟地址来引用它，这个值存放在这个物理页的PageInfo结构体的pp_ref成员变量中。当这个值变为0时，这个物理页才可以被释放。通常来说，任意一个物理页p的pp_ref值等于它在所有的页表项中，被位于虚拟地址UTOP之下的虚拟页所映射的次数（UTOP之上的地址范围在启动的时候已经被映射完成了，之后不会被改动）。
 
-　   当我们使用page_alloc函数的时候需要注意。它所返回的页的引用计数值总是0，所以pp_ref应该被马上加一
+   当我们使用page_alloc函数的时候需要注意。它所返回的页的引用计数值总是0，所以pp_ref应该被马上加一
 
 ### 页表管理
 
@@ -232,6 +226,106 @@ JOS内核有时需要读取或者修改内存，但是这时有可能他只知�
         page_insert()
 　　    check_page()子函数将会被用来检查你所编写的这些程序是否正确。
 
+* pgdir_walk(), 从虚拟地址中找对应页目录指向页表是否存在，按要求创建这个页表，实际上页表的上保存的内容包括该页表或者该页的物理地址，还包括读写权限等，格式[如该网页所示](https://pdos.csail.mit.edu/6.828/2018/lec/x86_translation_and_registers.pdf)
+
+```
+pte_t *
+pgdir_walk(pde_t *pgdir, const void *va, int create)
+{
+	// Fill this function in
+	pte_t *pgTablePage = pgdir + PDX(va);
+	// 二级页表是否存在
+	if ( !(*pgTablePage & PTE_P)){
+		// not creat  return false
+		if (create == false)
+			return NULL;
+		else{
+			// 分配新的页表
+			struct PageInfo *newPage = page_alloc(1);
+			// 是否分配成，分配成功则，引用计数 + 1
+			if (newPage == NULL)
+				return NULL;
+			newPage->pp_ref ++;
+			//将二级页表权限与物理地址写入
+			*pgTablePage = (page2pa(newPage) | PTE_P | PTE_W | PTE_U);
+			
+		}
+	}
+	uint32_t pageOffset = PTX(va);
+	//  物理地址转为虚拟地址
+	pte_t *page_base = (pte_t *)KADDR(PTE_ADDR(*pgTablePage));
+	return page_base + pageOffset;
+}
+```
+
+* boot_map_region(),虚拟地址与实际物理地址进行对应，其实就是按虚拟地址找对应的页目录page_dir，在目录中填物理地址,并按照要求给予对应权限perm。   
+
+```
+static void
+boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
+{
+	// Fill this function in
+	
+	for (size_t i = 0; i < size; i += PGSIZE){
+		pte_t *pgTable = pgdir_walk(pgdir, (void *)(va + i), true);
+		*pgTable = ((pa + i) | perm | PTE_P);
+	}
+}
+```
+* page_lookup(),用于找虚拟地址对应的页表是否存在。
+```
+struct PageInfo *
+page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
+{
+	// Fill this function in
+	
+	pte_t *pageTable = pgdir_walk(pgdir, va, 0);
+	if (pageTable == NULL)
+		return NULL;
+	// 页表是否存在
+	if (! (*pageTable & PTE_P))
+		return NULL;
+	// 页表地址是否通过形参地址返回
+	if (pte_store)
+		*pte_store = pageTable;
+	return pa2page(PTE_ADDR(*pageTable));
+}
+```
+
+* page_remove()
+```
+void
+page_remove(pde_t *pgdir, void *va)
+{
+	// Fill this function in
+	pte_t *pageTable = NULL;
+	struct PageInfo *pPage = page_lookup(pgdir, va, &pageTable);
+	if (pPage == NULL)
+		return;
+	page_decref(pPage);
+	*pageTable = 0;
+	tlb_invalidate(pgdir, va); // 页表缓存清除
+}
+```
+
+* page_insert()
+```
+
+int
+page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
+{
+	// Fill this function in
+	pte_t *pageTable = pgdir_walk(pgdir, va, true);
+	if (! pageTable)
+		return -E_NO_MEM;
+	pp->pp_ref ++;
+	if ((*pageTable & PTE_P)){
+		page_remove(pgdir, va);
+	}
+	*pageTable = (page2pa(pp) | perm | PTE_P);
+	return 0;
+}
+```
 ## 内核地址空间
 JOS把32位线性地址虚拟空间划分成两个部分。其中用户环境（进程运行环境）通常占据低地址的那部分，叫用户地址空间。而操作系统内核总是占据高地址的部分，叫内核地址空间。这两个部分的分界线是定义在memlayout.h文件中的一个宏 ULIM。JOS为内核保留了接近256MB的虚拟地址空间。这就可以理解了，为什么在实验1中要给操作系统设计一个高地址的地址空间。如果不这样做，用户环境的地址空间就不够了。
 
@@ -273,6 +367,35 @@ JOS把32位线性地址虚拟空间划分成两个部分。其中用户环境（
 
 3. 看别人都说是UPAGE开始的4Mb，存pageInfo,自己没太捋清楚；
 
-4. 4mb的pageInfo 对应1024个page，对应的页表是4kb * 1024 = 4mb，所以总共是8MB + 4kb；
+4. 4MB的pageInfo 对应1024个page，对应的页表是4kb * 1024 = 4mb，所以总共是8MB + 4kb；
 
-5. 这个在lab1中已经回答过了，[0 4MB] 和 [0xf0000000 oxf010000000]都被映射到[0 4MB]的空间中，所以EIP的地址不用变化也可以正确找到下一条指令；
+5. 这个在lab1中已经回答过了，[0 4MB] 和 [0xf0000000 0xf010000000]都被映射到[0 4MB]的空间中，所以EIP的地址不用变化也可以正确找到下一条指令；
+
+
+
+
+
+## 实验总结
+这个实验主要实现与建立了基于分页的**内核**虚拟内存机制，主要功能包括虚拟内存的建立，包括初始化与多级页表机制（JOS展示的是两级页表），虚拟内存的多级页表的分配与回收机制，最后引出虚拟内存的用处：对内核信息进行保护的，其实还有用户态与用户态的隔离、简化编译的作用（这里没有进行过多的介绍）。
+
+### 虚拟内存机制的建立
++ 虚拟内存的建立
+	+ 内存页的初始化与管理
+	+ 多级页表机制
++ 页表的分配与回收机制
+	+ 分配机制
+	+ 回收机制
+
+
+#### 虚拟内存的建立
+操作系统的虚拟内存机制最主要的过程是虚拟地址与物理地址的映射关系如何建立，以及该映射关系如何进行动态维护。本小节应该说是回答了VA与PA的映射关系如何建立的过程。
+
+VA与PA映射是一个查表的过程，虚拟内存中实际存储的是三个不同等级表格的偏移量，分别用PDX(Page Directory inDex),PTX(Page Table inDex),PGOFF(Page Offset)（也就是pgdir,pgtable,page的偏移量)，MMU对其的解析可以看成是三次间接寻址的过程，`*(*(*(pgdir + PDX) + PTX) + PGOFF)`，以上就是多级页表机制。
+
+操作系统对首先探测有系统一共需要管理多少内存，同时根据此，创建一个内存页管理数组，每个数组元素实际代表其对应的一个page的内存，实际内容是该页的引用次数（用于了解该页的使用情况），与一个页管理指针（用于将空闲页使用链表管理）。由此建立了页管理数组，这个数组实现了对物理页的直接管理。
+
+虚拟地址的建立流程是先通过建立内存页管理数组，根据目前操作系统应用情况，首先更新页管理数组中的空闲与占用情况，建立PageDir，最后将PageDir的地址填入控制寄存器CR3中，由此初步建立虚拟内存机制。
+
+
+#### 多级页表管理机制
+在创建该
