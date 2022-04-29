@@ -343,7 +343,7 @@ JOS把32位线性地址虚拟空间划分成两个部分。其中用户环境（
 #### 问题
 1. 到目前位置页表目录表，有多少个有效的目录项，他们被映射到哪里，完成下列表格；
 
-|Entry | Base Virtual Address | Piont to (logically) |
+|Entry | Base Virtual Address | Point to (logically) |
 |------|----------------------|----------------------|
 |1023|?|PageTable for top 4MB of physical mem|
 |1022|?|?|
